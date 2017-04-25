@@ -1,0 +1,8 @@
+body {
+  margin-top: 5em;
+  font-family: 'Josefin Sans', sans-serif;
+}
+
+.link-hover-hand {
+  cursor: pointer;
+}

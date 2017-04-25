@@ -1,0 +1,672 @@
+// required variables and functions
+const render = ReactDOM.render
+const Redux = window.Redux
+const Provider = ReactRedux.Provider
+const createStore = Redux.createStore
+const applyMiddleware = Redux.applyMiddleware
+const combineReducers = Redux.combineReducers
+const bindActionCreators = Redux.bindActionCreators
+const compose = Redux.compose
+const ReduxThunk = window.ReduxThunk.default
+const Component = React.Component
+const PropTypes = React.PropTypes
+const connect = ReactRedux.connect
+const classnames = window.classNames
+const Router = window.ReactRouter.Router
+const Route = window.ReactRouter.Route
+const hashHistory = window.ReactRouter.hashHistory
+const Link = window.ReactRouter.Link
+const syncHistoryWithStore = window.ReactRouterRedux.syncHistoryWithStore
+const routerReducer = window.ReactRouterRedux.routerReducer
+const routerMiddleware = window.ReactRouterRedux.routerMiddleware
+const push = window.ReactRouterRedux.push
+const S = window.S
+const SEARCH_REQUEST = 'SEARCH_REQUEST'
+const SEARCH_FAILED = 'SEARCH_FAILED'
+const SEARCH_SUCCESS = 'SEARCH_SUCCESS'
+
+const USER_REQUEST = 'USER_REQUEST'
+const USER_FAILED = 'USER_FAILED'
+const USER_SUCCESS = 'USER_SUCCESS'
+
+const INPUT_QUERY = 'INPUT_QUERY'
+const TOGGLE_USER_DETAILS_PAYLOAD = 'TOGGLE_USER_DETAILS_PAYLOAD'
+
+
+// reducer
+function search(state = {
+  results: [],
+  query: '',
+  fetching: false,
+  failure: false
+}, action) {
+  switch (action.type) {
+    case SEARCH_REQUEST:
+      return Object.assign({}, state, {
+        fetching: true,
+        failure: false,
+        results: []
+      })
+    case SEARCH_FAILED:
+      return Object.assign({}, state, {
+        fetching: false,
+        failure: true,
+        results: []
+      })
+    case SEARCH_SUCCESS:
+      return Object.assign({}, state, {
+        fetching: false,
+        failure: false,
+        results: action.results
+      })
+    case INPUT_QUERY:
+      return Object.assign({}, state, {
+        query: action.query
+      })
+    default:
+      return state
+  }
+}
+
+function user(state = {
+  fetchingUser: false,
+  failureUser: false,
+  userDetails: {},
+  showFullDetailsPayload: false
+}, action) {
+  switch (action.type) {
+    case TOGGLE_USER_DETAILS_PAYLOAD:
+      return Object.assign({}, state, {
+        showFullDetailsPayload: !state.showFullDetailsPayload,
+      })
+    case USER_REQUEST:
+      return Object.assign({}, state, {
+        fetchingUser: true,
+        failureUser: false,
+        userDetails: {},
+        showFullDetailsPayload: false
+      })
+    case USER_FAILED:
+      return Object.assign({}, state, {
+        fetchingUser: false,
+        failureUser: true,
+        userDetails: {},
+        showFullDetailsPayload: false
+      })
+    case USER_SUCCESS:
+      return Object.assign({}, state, {
+        fetchingUser: false,
+        failureUser: false,
+        userDetails: action.userDetails,
+        showFullDetailsPayload: false
+      })
+    default:
+      return state
+  }
+}
+
+// actions
+function toggleUserDetailsPayloadView() {
+  return {
+    type: TOGGLE_USER_DETAILS_PAYLOAD
+  }
+}
+
+function requestList() {
+  return {
+    type: SEARCH_REQUEST
+  }
+}
+
+function receiveList(list) {
+  return {
+    type: SEARCH_SUCCESS,
+    results: list
+
+  }
+}
+
+function errorList(data) {
+  return {
+    type: SEARCH_FAILED
+  }
+}
+
+
+function requestUser() {
+  return {
+    type: USER_REQUEST
+  }
+}
+
+function receiveUser(userDetails) {
+  return {
+    type: USER_SUCCESS,
+    userDetails: userDetails
+
+  }
+}
+
+function errorUser(data) {
+  return {
+    type: USER_FAILED
+  }
+}
+
+function inputQuery(query) {
+  return {
+    type: INPUT_QUERY,
+    query
+  }
+}
+
+// async action to fetch quote
+function fetchList() {
+  return (dispatch, getState) => {
+    const { query } = getState().search
+    
+    dispatch(requestList())
+    
+    fetch('https://api.github.com/search/users?q=' + query, {
+      method: 'get'
+    })
+    
+    .then(function(response) {
+      return response.json()
+    })
+      
+    .then(function(jsonResponse) {
+      if ('items' in jsonResponse && jsonResponse.items.length > 0) {
+        dispatch(receiveList(jsonResponse.items))
+      } else {
+        dispatch(errorList(jsonResponse))
+      }
+    })
+      
+    .catch(function(err) {
+      dispatch(errorList(err))
+    })
+  }  
+}
+
+function fetchUser(username) {
+  return (dispatch, getState) => {
+    
+    dispatch(requestUser())
+    
+    fetch('https://api.github.com/users/' + username, {
+      method: 'get'
+    })
+    
+    .then(function(response) {
+      return response.json()
+    })
+      
+    .then(function(jsonResponse) {
+      if ('message' in jsonResponse && jsonResponse.message == "Not Found") {
+        dispatch(errorUser(jsonResponse))
+      } else {
+        fetch(jsonResponse.repos_url, {
+          method: 'get'
+        })
+        .then(function(response) {
+          return response.json()
+        })
+        .then(function(jsonResponseRepos) {
+          const jsonResponseRepo = Object.assign({}, jsonResponse, {
+            repo_list: jsonResponseRepos
+          })
+          dispatch(receiveUser(jsonResponseRepo))
+        })
+        .catch(function(err) {
+          dispatch(errorUser(err))
+        })
+      }
+    })
+      
+    .catch(function(err) {
+      dispatch(errorUser(err))
+    })
+  }  
+}
+
+class InputSearch extends Component {
+  
+  render() {
+    const { query, fetching, onQueryChange, onSearch } = this.props
+    
+    const searchIcon = classnames({
+      'fa fa-fw': true,
+      'fa-search': fetching===false,
+      'fa-spinner fa-pulse': fetching===true
+    })
+    
+    return (
+      <form 
+        className="form-inline"
+        onSubmit={ (event) => {
+          event.preventDefault()
+          onSearch()
+        }} >
+        <div className="input-group input-group-lg col-xs-12">
+          <input 
+            className="form-control" 
+            type="text" 
+            placeholder="Enter Username"
+            value={query}
+            title="Search"
+            autoFocus={true}
+            onChange={
+              (event) => onQueryChange(event.target.value)
+            } />
+          <span className="input-group-btn">
+            <button 
+              type="submit" 
+              className="btn btn-default" >
+              <i className={searchIcon} aria-hidden="true"></i>
+            </button>
+          </span>
+        </div>
+      </form>
+    )
+  }
+}
+
+class Result extends Component {
+  
+  render() {
+    const { result, onFetchUser } = this.props
+    const imgClass = classnames({
+      'hide': !('avatar_url' in result),
+      'img-responsive': ('avatar_url' in result),
+      'col-xs-2': ('avatar_url' in result)
+    })
+    const contentClass = classnames({
+      'col-xs-12': !('avatar_url' in result),
+      'col-xs-10': ('avatar_url' in result)
+    })
+    
+    let thumbImage = "#"
+    if('avatar_url' in result) {
+      thumbImage = result.avatar_url
+    }
+    
+    return (
+      <div className="panel panel-default">
+        <div className="panel-body">
+          <img className={imgClass}
+            src={thumbImage} />
+          <Link
+            className={contentClass}
+            to={'/' + result.login}
+            onClick={() => onFetchUser(result.login)}
+          >
+            <h4>{result.login}</h4>
+          </Link>
+          <div className="clearfix"></div>
+        </div>
+      </div>
+    )
+  }
+}
+
+class Results extends Component {
+  
+  render() {
+    const { results, failure, onFetchUser } = this.props
+    
+    const renderedResults = results.map(
+      (result, index) => 
+        <Result key={index} result={result} onFetchUser={onFetchUser} />
+    )
+    
+    return (
+      <div>
+        { !failure && 
+          renderedResults
+        }
+        { failure && 
+          <p className="lead text-center">
+            failed to get anything
+          </p>
+        }
+        
+      </div>
+    )
+  }
+}
+
+class SearchPage extends Component {
+  
+  render() {
+    const { results, failure, onFetchUser,
+            query, fetching, onQueryChange, onSearch } = this.props
+    
+    return (
+      <div>
+        <InputSearch
+          query={query}
+          fetching={fetching}
+          onQueryChange={onQueryChange}
+          onSearch={onSearch} />
+        <br /><br /><br />
+        <Results
+          onFetchUser={onFetchUser}
+          results={results}
+          failure={failure} />
+      </div>
+    )
+  }
+}
+
+class UserDetails extends Component {
+  
+  render() {
+    const { fetchingUser, failureUser, userDetails,
+            toggleDetailsPayload, showFullDetailsPayload } = this.props
+    
+    const repos = userDetails.repo_list
+    console.log(userDetails)
+    if (!("repo_list" in userDetails)) {
+      var smallRepoList = {}
+    } else {
+      var smallRepoList = userDetails.repo_list.map((item) => item.name)
+    }
+    const userDetailsSansRepos = Object.assign({}, userDetails, {
+      repo_list: smallRepoList
+    })
+        
+    return (
+      <div className="col-xs-12 col-sm-12 col-md-4 col-lg-4">
+        { "avatar_url" in userDetails && 
+          < div className="col-xs-12">
+            <img className="img-responsive" src={userDetails.avatar_url} />
+          </div>
+        }
+        { "name" in userDetails &&
+          <div className="col-xs-12">
+            <h2>
+              <a href={userDetails.html_url? userDetails.html_url : '#'}>
+                {userDetails.name}
+              </a>
+              <small>({userDetails.login})</small>
+            </h2>
+          </div>
+        }
+        { "company" in userDetails && 
+          < div className="col-xs-12">
+            <h3>{userDetails.company}</h3>
+          </div>
+        }
+        { "blog" in userDetails &&
+          <div className="col-xs-12">
+            <h4>
+              <a href={userDetails.blog}>
+                {userDetails.blog}
+              </a>
+            </h4>
+          </div>
+        }
+        { "email" in userDetails && 
+          < div className="col-xs-12">
+            <h4>{userDetails.email}</h4>
+          </div>
+        }
+        { "location" in userDetails && 
+          < div className="col-xs-12">
+            <h3>{userDetails.location}</h3>
+          </div>
+        }
+        { "bio" in userDetails && 
+          < div className="col-xs-12">
+            <p>{userDetails.bio}</p>
+          </div>
+        }
+        { "followers" in userDetails &&
+          <div className="col-xs-6">
+            <h4>
+              Followers: {userDetails.followers}
+            </h4>
+          </div>
+        }
+        { "following" in userDetails &&
+          <div className="col-xs-6">
+            <h4>
+              Following: {userDetails.following}
+            </h4>
+          </div>
+        }
+        { "public_repos" in userDetails &&
+          <div className="col-xs-6">
+            <h4>
+              Repos: {userDetails.public_repos}
+            </h4>
+          </div>
+        }
+        { "public_gists" in userDetails &&
+          <div className="col-xs-6">
+            <h4>
+              Gists: {userDetails.public_gists}
+            </h4>
+          </div>
+        }
+        { userDetails &&
+          <div className="col-xs-12">
+            <h4>
+              <a className="link-hover-hand"
+                onClick={() => toggleDetailsPayload()}>
+                Click for Full Payload with Repos:
+              </a>
+            </h4>
+            { showFullDetailsPayload &&
+              <pre>
+                {JSON.stringify(userDetailsSansRepos, undefined, 2)}
+              </pre>
+            }
+          </div>
+        }
+      </div>
+    )
+  }
+}
+
+class RepoListItem extends Component {
+  
+  render() {
+    const { repoDetails } = this.props
+    
+        
+    return (
+      <li className="list-group-item">
+        <div className="panel panel-default">
+          <div className="panel-heading">
+            <h4 className="panel-title">
+              <a className="col-xs-8 col-sm-9 col-md-9 col-lg-9" 
+                href={repoDetails.html_url}>
+                {repoDetails.name}
+              </a>
+              <div className="col-xs-4 col-sm-3 col-md-3 col-lg-3">
+                <span className="badge">
+                  {repoDetails.language}
+                </span>
+              </div>
+              <div className="clearfix"></div>
+            </h4>
+          </div>
+          { "description" in repoDetails && repoDetails.description != "" &&
+            <div className="panel-body">
+              <p>{repoDetails.description}</p>
+            </div>
+          }
+        </div>
+      </li>
+    )
+  }
+}
+
+class UserRepoList extends Component {
+  
+  render() {
+    const { fetchingUser, failureUser, userDetails } = this.props
+    
+    const repoListTags = userDetails.repo_list.map(
+      (item) => <RepoListItem repoDetails={item} />
+    )
+    
+        
+    return (
+      <div className="col-xs-12 col-sm-12 col-md-8 col-lg-8">
+        <h3> List of User's Repositories </h3>
+        <ul className="list-group">
+          {repoListTags}
+        </ul>
+      </div>
+    )
+  }
+}
+
+class UserPage extends Component {
+  
+  render() {
+    const { fetchingUser, onFetchUser, failureUser, userDetails,
+            toggleDetailsPayload, showFullDetailsPayload } = this.props
+    
+    const searchIcon = classnames({
+      'fa fa-fw': true,
+      'fa-search': fetchingUser===false,
+      'fa-spinner fa-pulse': fetchingUser===true
+    })
+        
+    return (
+      <div className="row">
+        { fetchingUser &&
+          <div className="col-xs-12 text-center">
+            <i className={searchIcon} aria-hidden="true"></i>
+          </div>
+        }
+        { !fetchingUser &&
+          <div className="col-xs-12">
+            <UserDetails
+              userDetails={userDetails}
+              failureUser={failureUser}
+              fetchingUser={fetchingUser}
+              toggleDetailsPayload={toggleDetailsPayload}
+              showFullDetailsPayload={showFullDetailsPayload} />
+            <UserRepoList
+              userDetails={userDetails}
+              failureUser={failureUser}
+              fetchingUser={fetchingUser} />
+          </div>
+        }
+      </div>
+    )
+  }
+}
+
+class App extends Component {
+
+  render() {
+    const {
+      results,
+      query,
+      fetching,
+      failure,
+      onQueryChange,
+      onSearch,
+      params,
+      onFetchUser,
+      fetchingUser,
+      failureUser,
+      userDetails,
+      toggleDetailsPayload,
+      showFullDetailsPayload
+    } = this.props
+
+    return (
+      <div className="container">
+        <div className="jumbotron">
+          { !params.username &&
+            <SearchPage
+              query={query}
+              fetching={fetching}
+              onQueryChange={onQueryChange}
+              onFetchUser={onFetchUser}
+              onSearch={onSearch}
+              results={results}
+              failure={failure} />
+          }
+          { params.username &&
+            <UserPage
+              fetchingUser={fetchingUser}
+              onFetchUser={onFetchUser}
+              failureUser={failureUser}
+              userDetails={userDetails}
+              toggleDetailsPayload={toggleDetailsPayload} 
+              showFullDetailsPayload={showFullDetailsPayload} />
+          }
+          <div className="clearfix"></div>
+        </div>
+      </div>
+    )
+  }
+}
+
+// // proptypes required for App component
+// App.propTypes = {
+//   results: PropTypes.array.isRequired,
+//   query: PropTypes.string.isRequired,
+//   fetching: PropTypes.bool.isRequired,
+//   failure: PropTypes.bool.isRequired,
+//   onClick: PropTypes.func.isRequired,
+// }
+
+// helper functions for app container
+function mapStateToProps(state) {
+  const { search, user } = state
+  const { results, query, fetching, failure } = search
+  const { fetchingUser, failureUser, userDetails,
+          showFullDetailsPayload } = user
+  return { results, query, fetching, failure,
+           fetchingUser, failureUser, userDetails,
+           showFullDetailsPayload }
+}
+
+function mapDispatchToProps(dispatch) {
+  return {
+    onSearch: () => dispatch(fetchList()),
+    onQueryChange: (query) => dispatch(inputQuery(query)),
+    onFetchUser: (username) => dispatch(fetchUser(username)),
+    toggleDetailsPayload: () => dispatch(toggleUserDetailsPayloadView())
+  }
+}
+
+// create app container using connect()
+const AppContainer = connect(mapStateToProps, mapDispatchToProps)(App)
+
+// create store using middlewares
+const rootReducer = combineReducers({
+  search,
+  user,
+  routing: routerReducer
+})
+
+// create default store
+const composeEnhancers = window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__ || compose;
+let store = createStore(
+  rootReducer,
+  composeEnhancers(
+    applyMiddleware(ReduxThunk)
+  )
+)
+
+const appHistory = syncHistoryWithStore(hashHistory, store)
+
+
+// render the app to the page
+render(
+  <Provider store={store}>
+    <Router history={appHistory}>
+      <Route path="/(:username)" component={AppContainer} />
+    </Router>
+  </Provider>, document.getElementById('app')
+);
